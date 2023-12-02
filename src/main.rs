@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::create_dir_all, time::Duration, borrow::Cow};
+use std::{borrow::Cow, collections::HashMap, fs::create_dir_all, time::Duration};
 
 use directories::ProjectDirs;
 use iced::{
@@ -10,8 +10,10 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use scryfall::Card;
-use tokio::{fs, time::sleep, io::AsyncRead};
+use tokio::{fs, io::AsyncRead, time::sleep};
 use uuid::Uuid;
+
+mod cache;
 
 const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
@@ -38,10 +40,7 @@ enum Message {
 	DownloadCardImage(Uuid)
 }
 
-
-async fn empty() {
-
-}
+async fn empty() {}
 
 impl Application for App {
 	type Executor = executor::Default;
@@ -90,12 +89,12 @@ impl Application for App {
 
 	fn view(&self) -> Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
 		info!("draw");
-		let id =  Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap();
+		let id = Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap();
 		let img = if let Some(Cache::Present) = self.card_img_cache.get(&id) {
 			DIRS.cache_dir().join(format!("{id}.png"))
 		} else {
-    			"/tmp/ferris.png".into()
-			};
+			"/tmp/ferris.png".into()
+		};
 		error!("{img:?}");
 		let image = Image::<image::Handle>::new(img);
 		column!(image, Text::new(format!("{}", self.i))).into()
@@ -111,8 +110,10 @@ fn main() -> iced::Result {
 		.filter(Some("wgpu_hal"), log::LevelFilter::Warn)
 		.filter(Some("iced_wgpu"), log::LevelFilter::Warn)
 		.init();
-	Lazy::force(&DIRS);
-	create_dir_all(DIRS.cache_dir()).expect("failed to create cache dir");
+	create_dir_all(cache::CARD_IMAGE_CACHE_DIR.as_path()).expect(&format!(
+		"failed to create {:?} dir",
+		cache::CARD_IMAGE_CACHE_DIR
+	));
 	App::run(Settings::default())
 }
 
