@@ -36,6 +36,7 @@ enum Cache {
 
 #[derive(Debug)]
 enum Message {
+	None,
 	Increase,
 	DownloadCardImage(Uuid)
 }
@@ -62,6 +63,7 @@ impl Application for App {
 	fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
 		info!("update");
 		match message {
+			Message::None => (),
 			Message::Increase => self.i += 1,
 			Message::DownloadCardImage(id) => {
 				self.card_img_cache.insert(id, Cache::Present);

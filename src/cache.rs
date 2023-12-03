@@ -1,5 +1,7 @@
-use crate::DIRS;
+use crate::{Message, DIRS};
+use async_trait::async_trait;
 use iced::Command;
+use log::error;
 use once_cell::sync::Lazy;
 use scryfall::Card;
 use std::{collections::HashMap, hash::Hash, path::PathBuf};
@@ -19,10 +21,12 @@ impl<'a> From<&'a Card> for CardImage<'a> {
 }
 
 /// Cache a file, without loding it
+#[async_trait]
 trait FileCacheAbel {
 	/// Path were Value Should be stored
 	fn cache_path(&self) -> PathBuf;
-	fn fetch(self) -> anyhow::Result<()>;
+	async fn fetch(self) -> anyhow::Result<()>;
+	fn sucess_message(&self) -> Message;
 }
 
 enum CacheState {
@@ -33,23 +37,29 @@ enum CacheState {
 struct FileCacher<K: FileCacheAbel>(HashMap<K, CacheState>);
 impl<K> FileCacher<K>
 where
-	K: FileCacheAbel + Eq + PartialEq + Hash
+	K: FileCacheAbel + Eq + PartialEq + Hash + Clone
 {
-	fn fetch_if_needed(&mut self, key: K) -> Option<()> {
-		//todo
-		self.0.entry(key).or_insert_with(|| {
+	fn fetch_if_needed(&mut self, key: K) -> Option<Command<Message>> {
+		let mut command = None;
+		self.0.entry(key.clone()).or_insert_with(|| {
 			let patch = key.cache_path();
-			let command = None;
 			if !patch.exists() {
-				let fut = key.fetch(); //todo
-				let call_back = todo!();
-				Command::perform(fut, call_back);
+				let sucess_message = key.sucess_message();
+				let fut = key.fetch();
+				let call_back = |res| match res {
+					Err(err) => {
+						error!("{err:?}");
+						Message::None
+					},
+					Ok(_) => sucess_message
+				};
+				command = Some(Command::perform(fut, call_back));
 				CacheState::Downloading
 			} else {
 				CacheState::Present
 			}
 		});
-		todo!()
+		command
 	}
 
 	/// get the path, to the cached file. (if file is already cached)
