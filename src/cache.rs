@@ -37,7 +37,7 @@ enum CacheState {
 struct FileCacher<K: FileCacheAbel>(HashMap<K, CacheState>);
 impl<K> FileCacher<K>
 where
-	K: FileCacheAbel + Eq + PartialEq + Hash + Clone + Send
+	K: FileCacheAbel + Eq + PartialEq + Hash + Clone + Send + 'static
 {
 	fn fetch_if_needed(&mut self, key: K) -> Option<Command<Message>> {
 		let mut command = None;
@@ -45,7 +45,7 @@ where
 			let patch = key.cache_path();
 			if !patch.exists() {
 				let sucess_message = key.sucess_message();
-				let fut = async move {key.fetch().await};
+				let fut = key.fetch();
 				let call_back = |res| match res {
 					Err(err) => {
 						error!("{err:?}");
