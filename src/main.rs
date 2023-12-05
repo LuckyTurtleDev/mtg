@@ -1,16 +1,21 @@
-use std::{borrow::Cow, collections::HashMap, fs::create_dir_all, time::Duration};
+//Clippy starts hating one_cell::sync::Lazy
+#![allow(
+	clippy::declare_interior_mutable_const,
+	clippy::borrow_interior_mutable_const
+)]
+#![allow(clippy::expect_fun_call)]
 
+use cache::{CardImage, FileCacher};
 use directories::ProjectDirs;
 use iced::{
 	executor,
 	widget::{column, image, Image, Text},
 	Application, Command, Element, Settings, Theme
 };
-use log::{error, info};
+use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Client;
-use scryfall::Card;
-use tokio::{fs, io::AsyncRead, time::sleep};
+use std::fs::create_dir_all;
 use uuid::Uuid;
 
 mod cache;
@@ -20,25 +25,19 @@ const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
 	ProjectDirs::from("io.crates", "LuckyTurtleDev", CARGO_PKG_NAME)
 		.expect("failed to get project dirs")
 });
+#[allow(clippy::redundant_closure)] // false positive?
 const CLIENT: Lazy<Client> = Lazy::new(|| reqwest::Client::new());
 
 #[derive(Debug, Default)]
 struct App {
 	i: u64,
-	card_img_cache: HashMap<Uuid, Cache>
-}
-
-#[derive(Debug)]
-enum Cache {
-	Downloding,
-	Present
+	card_img_cache: FileCacher<CardImage>
 }
 
 #[derive(Debug)]
 enum Message {
 	None,
-	Increase,
-	DownloadCardImage(Uuid)
+	CardImgCache(CardImage)
 }
 
 async fn empty() {}
@@ -52,8 +51,8 @@ impl Application for App {
 	fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
 		(
 			Default::default(),
-			//force to call upadet aftert strat
-			Command::perform(empty(), |()| Message::Increase)
+			//force to call upadet aftert start
+			Command::perform(empty(), |()| Message::None)
 		)
 	}
 	fn title(&self) -> String {
@@ -64,40 +63,26 @@ impl Application for App {
 		info!("update");
 		match message {
 			Message::None => (),
-			Message::Increase => self.i += 1,
-			Message::DownloadCardImage(id) => {
-				self.card_img_cache.insert(id, Cache::Present);
-			}
+			Message::CardImgCache(id) => self.card_img_cache.update(id)
 		}
 		let mut commands = Vec::new();
 		self.i += 1;
-		let id = Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap();
-		//todo: https://rust-lang.github.io/rust-clippy/master/index.html#/borrow_interior_mutable_const
-		self.card_img_cache.entry(id).or_insert_with(|| {
-			let patch = DIRS.cache_dir().join(format!("{id}.png"));
-			if !patch.exists() {
-				let command = Command::perform(dowload_card_image(id), move |f| {
-					f.unwrap();
-					Message::DownloadCardImage(id)
-				});
-				commands.push(command);
-				Cache::Downloding
-			} else {
-				Cache::Present
-			}
-		});
+		let img_id =
+			CardImage(Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap());
+		if let Some(com) = self.card_img_cache.fetch_if_needed(img_id) {
+			commands.push(com)
+		};
 		Command::batch(commands)
 	}
 
 	fn view(&self) -> Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
 		info!("draw");
-		let id = Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap();
-		let img = if let Some(Cache::Present) = self.card_img_cache.get(&id) {
-			DIRS.cache_dir().join(format!("{id}.png"))
-		} else {
-			"/tmp/ferris.png".into()
-		};
-		error!("{img:?}");
+		let card_id =
+			CardImage(Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap());
+		let img = self
+			.card_img_cache
+			.get_path(&card_id)
+			.unwrap_or_else(|| "/tmp/ferris.png".into());
 		let image = Image::<image::Handle>::new(img);
 		column!(image, Text::new(format!("{}", self.i))).into()
 	}
@@ -117,19 +102,4 @@ fn main() -> iced::Result {
 		cache::CARD_IMAGE_CACHE_DIR
 	));
 	App::run(Settings::default())
-}
-
-async fn dowload_card_image(scryfall_id: Uuid) -> anyhow::Result<()> {
-	info!("download card image {scryfall_id}");
-	let card = Card::scryfall_id(scryfall_id).await?;
-	let img = card.image_uris.get("png").unwrap();
-	let img = CLIENT
-		.get(img.as_str())
-		.send()
-		.await?
-		.error_for_status()?
-		.bytes()
-		.await?;
-	fs::write(DIRS.cache_dir().join(format!("{scryfall_id}.png")), img).await?;
-	Ok(())
 }
