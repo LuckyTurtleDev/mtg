@@ -88,7 +88,7 @@ impl From<Card> for CardImage {
 #[async_trait]
 impl FileCacheAbel for CardImage {
 	fn cache_path(&self) -> PathBuf {
-		dbg!(CARD_IMAGE_CACHE_DIR.join(format!("{}.png", self.0)))
+		CARD_IMAGE_CACHE_DIR.join(format!("{}.png", self.0))
 	}
 	async fn fetch(self) -> anyhow::Result<()> {
 		info!("download card image {}", self.0);

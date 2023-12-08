@@ -6,10 +6,11 @@
 #![allow(clippy::expect_fun_call)]
 
 use cache::{CardImage, FileCacher};
+use components::top_bar;
 use directories::ProjectDirs;
 use iced::{
 	executor,
-	widget::{column, image, Image, Text},
+	widget::{column, image, Image},
 	Application, Command, Element, Settings, Theme
 };
 use log::info;
@@ -19,6 +20,7 @@ use std::fs::create_dir_all;
 use uuid::Uuid;
 
 mod cache;
+mod components;
 
 const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
@@ -28,16 +30,40 @@ const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
 #[allow(clippy::redundant_closure)] // false positive?
 const CLIENT: Lazy<Client> = Lazy::new(|| reqwest::Client::new());
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct App {
-	i: u64,
-	card_img_cache: FileCacher<CardImage>
+	search: String,
+	card_img_cache: FileCacher<CardImage>,
+	//Font size
+	em: u16,
+	main_activiti: MainActiviti
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MainActiviti {
+	Search,
+	Stock,
+	Decks,
+	Wishlist
+}
+
+impl Default for App {
+	fn default() -> Self {
+		Self {
+			search: Default::default(),
+			card_img_cache: Default::default(),
+			em: 16,
+			main_activiti: MainActiviti::Search
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 enum Message {
 	None,
-	CardImgCache(CardImage)
+	CardImgCache(CardImage),
+	Search(String),
+	MainActiviti(MainActiviti)
 }
 
 async fn empty() {}
@@ -63,10 +89,11 @@ impl Application for App {
 		info!("update");
 		match message {
 			Message::None => (),
-			Message::CardImgCache(id) => self.card_img_cache.update(id)
+			Message::CardImgCache(id) => self.card_img_cache.update(id),
+			Message::Search(search) => self.search = search,
+			Message::MainActiviti(activiti) => self.main_activiti = activiti
 		}
 		let mut commands = Vec::new();
-		self.i += 1;
 		let img_id =
 			CardImage(Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap());
 		if let Some(com) = self.card_img_cache.fetch_if_needed(img_id) {
@@ -83,8 +110,9 @@ impl Application for App {
 			.card_img_cache
 			.get_path(&card_id)
 			.unwrap_or_else(|| "/tmp/ferris.png".into());
+
 		let image = Image::<image::Handle>::new(img);
-		column!(image, Text::new(format!("{}", self.i))).into()
+		column!(top_bar::view(self), image).into()
 	}
 
 	fn theme(&self) -> Self::Theme {
