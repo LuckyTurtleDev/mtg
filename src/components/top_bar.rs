@@ -1,4 +1,4 @@
-use crate::{App, MainActiviti, Message};
+use crate::{App, Element, MainActiviti, Message};
 use iced::{
 	theme,
 	widget::{self, button, row, text_input, Space},
@@ -19,13 +19,10 @@ fn activiti_button<'a>(
 	}
 }
 
-pub fn view(
-	app: &App
-) -> iced::Element<
-	<App as iced::Application>::Message,
-	iced::Renderer<<App as iced::Application>::Theme>
-> {
-	let search = text_input("Search", &app.search).on_input(Message::Search);
+pub fn view(app: &App) -> Element {
+	let search = text_input("Search", &app.search)
+		.on_input(Message::Search)
+		.on_submit(Message::SearchSubmit);
 	let bt_search = activiti_button("Search", MainActiviti::Search, app);
 	let bt_stock = activiti_button("Stock", MainActiviti::Stock, app);
 	let bt_decks = activiti_button("Decks", MainActiviti::Decks, app);
