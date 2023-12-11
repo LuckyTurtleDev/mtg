@@ -11,16 +11,26 @@ use directories::ProjectDirs;
 use iced::{
 	executor,
 	widget::{column, image, Image},
-	Application, Command, Element, Settings, Theme
+	Application, Command, Settings, Theme
 };
 use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Client;
-use std::fs::create_dir_all;
+use scryfall::Card;
+use std::{fs::create_dir_all, sync::Arc};
 use uuid::Uuid;
+
+use crate::components::activiti;
 
 mod cache;
 mod components;
+mod mtg;
+
+type Element<'a> = iced::Element<
+	'a,
+	<App as iced::Application>::Message,
+	iced::Renderer<<App as iced::Application>::Theme>
+>;
 
 const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
@@ -32,7 +42,8 @@ const CLIENT: Lazy<Client> = Lazy::new(|| reqwest::Client::new());
 
 #[derive(Debug)]
 struct App {
-	search: String,
+	search: Arc<String>,
+	search_result: Vec<Card>,
 	card_img_cache: FileCacher<CardImage>,
 	//Font size
 	em: u16,
@@ -51,6 +62,7 @@ impl Default for App {
 	fn default() -> Self {
 		Self {
 			search: Default::default(),
+			search_result: Default::default(),
 			card_img_cache: Default::default(),
 			em: 16,
 			main_activiti: MainActiviti::Search
@@ -63,6 +75,8 @@ enum Message {
 	None,
 	CardImgCache(CardImage),
 	Search(String),
+	SearchSubmit,
+	SearchResult(Vec<Card>),
 	MainActiviti(MainActiviti)
 }
 
@@ -87,13 +101,24 @@ impl Application for App {
 
 	fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
 		info!("update");
+		let mut commands = Vec::new();
 		match message {
 			Message::None => (),
 			Message::CardImgCache(id) => self.card_img_cache.update(id),
-			Message::Search(search) => self.search = search,
+			Message::SearchSubmit => commands.push(Command::perform(
+				mtg::search(self.search.clone()),
+				Message::SearchResult
+			)),
+			Message::Search(search) => self.search = Arc::new(search),
+			Message::SearchResult(cards) => self.search_result = cards,
 			Message::MainActiviti(activiti) => self.main_activiti = activiti
 		}
-		let mut commands = Vec::new();
+		for card in self.search_result.iter() {
+			let command = self.card_img_cache.fetch_if_needed(CardImage(card.id));
+			if let Some(command) = command {
+				commands.push(command);
+			}
+		}
 		let img_id =
 			CardImage(Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap());
 		if let Some(com) = self.card_img_cache.fetch_if_needed(img_id) {
@@ -102,7 +127,7 @@ impl Application for App {
 		Command::batch(commands)
 	}
 
-	fn view(&self) -> Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
+	fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
 		info!("draw");
 		let card_id =
 			CardImage(Uuid::parse_str("56ebc372-aabd-4174-a943-c7bf59e5028d").unwrap());
@@ -111,8 +136,13 @@ impl Application for App {
 			.get_path(&card_id)
 			.unwrap_or_else(|| "/tmp/ferris.png".into());
 
+		let activiti_view = match self.main_activiti {
+			MainActiviti::Search => components::activiti::view(self),
+			_ => "TODO".into()
+		};
+
 		let image = Image::<image::Handle>::new(img);
-		column!(top_bar::view(self), image).into()
+		column!(top_bar::view(self), activiti_view).into()
 	}
 
 	fn theme(&self) -> Self::Theme {

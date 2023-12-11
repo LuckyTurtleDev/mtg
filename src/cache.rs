@@ -95,7 +95,7 @@ impl FileCacheAbel for CardImage {
 		let card = Card::scryfall_id(self.0)
 			.await
 			.with_context(|| "failed to fetch card informations")?;
-		let img = card.image_uris.get("png").unwrap();
+		let img = card.image_uris.get("jpg").unwrap();
 		let img = CLIENT
 			.get(img.as_str())
 			.send()
