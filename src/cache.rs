@@ -1,7 +1,7 @@
 use crate::{Message, CLIENT, DIRS};
 use anyhow::Context;
-use iced::Command;
-use log::{error, info};
+use iced::{Command, keyboard};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use reqwest::Url;
 use std::{
@@ -10,9 +10,11 @@ use std::{
 	hash::Hash,
 	mem::replace,
 	path::PathBuf,
-	sync::Arc
+	sync::Arc, future::Future, process::Output
 };
 use tokio::fs;
+use tokio::sync::mpsc::UnboundedSender as Sender;
+
 
 pub const URL_CACHE: Lazy<PathBuf> = Lazy::new(|| DIRS.cache_dir().join("img"));
 
@@ -22,15 +24,29 @@ enum CacheState {
 	Downloading
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 ///Chache content from a Url to a file
-pub struct UrlCacher(HashMap<Url, CacheState>);
+pub struct UrlCacher{
+	data: HashMap<Url, CacheState>,
+	sender: Sender<Message>,
+	}
 
 impl UrlCacher {
+	pub fn new(sender: Sender<Message>) -> Self
+	{
+		Self{
+			data: Default::default(),
+			sender,
+		}
+	}
+	
 	pub fn get_path(&self, url: &Url) -> Option<PathBuf> {
-		match self.0.get(url) {
+		match self.data.get(url) {
 			None => {
-				error!("cache miss {:?}", url.as_str());
+				let res = self.sender.send(Message::UrlCacheDownload(url.to_owned()));
+				if let Err(err) = res {
+					panic!("{err}");
+				}
 				None
 			},
 			Some(CacheState::Downloading) => None,
@@ -38,20 +54,21 @@ impl UrlCacher {
 		}
 	}
 
+	
 	pub fn fetch_if_needed(&mut self, url: &Url) -> Option<Command<Message>> {
-		if !self.0.contains_key(url) {
+		if !self.data.contains_key(url) {
 			let path = url_to_file(url);
 			if path.exists() {
-				self.0.insert(url.clone(), CacheState::Present);
+				self.data.insert(url.clone(), CacheState::Present);
 				None
 			} else {
 				let url = url.to_owned();
-				self.0.insert(url.clone(), CacheState::Downloading);
+				self.data.insert(url.clone(), CacheState::Downloading);
 				Some(Command::perform(
 					dowload_file(url.clone(), path),
 					move |res| {
 						if res.is_ok() {
-							Message::UrlCacheDownloaded(url)
+							Message::UrlCacheDownloadReady(url)
 						} else {
 							Message::None
 						}
@@ -64,7 +81,7 @@ impl UrlCacher {
 	}
 
 	pub fn callback(&mut self, url: Url) {
-		self.0.insert(url, CacheState::Present);
+		self.data.insert(url, CacheState::Present);
 	}
 }
 
@@ -145,11 +162,11 @@ where
 
 	/// Load missing data to cache and reseltt acess time.
 	/// Should be called before `get()`
-	fn need_soon<Q>(&mut self, key: &Q)
+	pub fn need_soon<Q>(&mut self, key: &Q) -> Result<(),()>
 	where
 		Arc<K>: Borrow<Q>,
 		Q: Hash + Eq + ?Sized,
-		Q: ToOwned<Owned = K>
+		Q: ToOwned<Owned = K>,
 	{
 		let time = self.data.get_mut(key).map(|(time, _value)| time);
 		match time {
@@ -160,12 +177,19 @@ where
 					.insert(self.time, value.unwrap_or_else(|| Arc::new(key.to_owned())));
 				let _ = replace(time, self.time);
 				self.time += 1;
+				Ok(())
 			},
-			None => {
-				// TODO: create command to load missing cache
-				todo!()
-			}
+			None => Err(())
 		}
+	}
+	
+	/// insert a value, after command has finish
+	fn callback(&mut self, key: K, value: V) {
+		let key = Arc::new(key);
+		if self.data.insert(key, (self.time ,value)).is_some() {
+			panic!("this should be NONE")
+		}
+		self.time +=1;
 	}
 
 	fn cache_replacement(&mut self) {
