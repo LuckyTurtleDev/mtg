@@ -5,7 +5,7 @@
 )]
 #![allow(clippy::expect_fun_call)]
 
-use cache::{Cacher, UrlCacher};
+use cache::{Cacher, ImgLimiter, UrlCacher};
 use components::top_bar;
 use directories::ProjectDirs;
 use iced::{
@@ -41,7 +41,8 @@ const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
 #[allow(clippy::redundant_closure)] // false positive?
 const CLIENT: Lazy<Client> = Lazy::new(|| reqwest::Client::new());
 
-const CARD_BACK: Lazy<Handle> = Lazy::new(|| Handle::from_path("todo"));
+const CARD_BACK: Lazy<Handle> =
+	Lazy::new(|| Handle::from_memory(include_bytes!("img/card_back.webp")));
 
 static RECEIVER: Lazy<Mutex<Option<Receiver<Message>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -55,6 +56,9 @@ struct App {
 	///
 	/// Clonig Handle is sheap, it use [`Arc`] intern
 	img_cache: Cacher,
+	/// iced lags, if you show many new views at the same time.
+	/// Even if they are already load to memory
+	img_limiter: ImgLimiter,
 	//Font size
 	em: u16,
 	main_activiti: MainActiviti
@@ -114,7 +118,8 @@ impl Application for App {
 			search: Default::default(),
 			search_result: Default::default(),
 			url_cache: UrlCacher::new(sender.clone()),
-			img_cache: Cacher::new(sender),
+			img_cache: Cacher::new(sender.clone()),
+			img_limiter: ImgLimiter::new(10, sender),
 			em: 16,
 			main_activiti: MainActiviti::Search
 		};
@@ -160,6 +165,7 @@ impl Application for App {
 			_ => "TODO".into()
 		};
 		let element: Element = column!(top_bar::view(self), activiti_view).into();
+		self.img_limiter.view_finish();
 		info!("draw finish in {}µs", time.elapsed().as_micros());
 		element
 	}
