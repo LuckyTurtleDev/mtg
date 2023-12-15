@@ -13,6 +13,8 @@ pub fn view(app: &App) -> Element {
 			let handle = url
 				.map(|url| app.img_cache.get(url, &app.url_cache))
 				.flatten()
+				.map(|f| app.img_limiter.limit(f))
+				.flatten()
 				.unwrap_or(CARD_BACK.deref().clone());
 			Image::new(handle).into()
 		})

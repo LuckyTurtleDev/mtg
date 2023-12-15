@@ -3,12 +3,13 @@ use crate::Message;
 use anyhow::Context;
 use iced::{widget::image::Handle, Command};
 use log::{error, info};
+use parking_lot::Mutex;
 use reqwest::Url;
 use std::{
 	collections::{BTreeMap, HashMap},
 	mem::{self, replace},
 	ops::{Deref, DerefMut},
-	sync::{Arc, Mutex}
+	sync::Arc
 };
 use tokio::{fs, sync::mpsc::UnboundedSender as Sender};
 
@@ -55,7 +56,7 @@ impl Cacher {
 	}
 
 	pub fn get(&self, url: &Url, url_cache: &UrlCacher) -> Option<Handle> {
-		let mut guard = self.inner.lock().unwrap();
+		let mut guard = self.inner.try_lock().unwrap();
 		let guard = guard.deref_mut();
 		match guard.data.get_mut(url) {
 			Some((time, value)) => {
@@ -103,7 +104,7 @@ impl Cacher {
 	/// insert a value, after loading has finish.
 	/// Should be called when [`Message::LoadImageReady`] was send
 	pub fn callback(&mut self, url: Arc<Url>, handle: Handle) {
-		let mut guard = self.inner.lock().unwrap();
+		let mut guard = self.inner.try_lock().unwrap();
 		if let Some((_time, value)) = guard.data.get_mut(url.deref()) {
 			let _ = mem::replace(value, CacheState::Present(handle));
 		}
@@ -111,7 +112,7 @@ impl Cacher {
 	}
 
 	pub fn cache_replacement(&mut self) {
-		let mut gaurd = self.inner.lock().unwrap();
+		let mut gaurd = self.inner.try_lock().unwrap();
 		while gaurd.last_acess.len() > self.max_size {
 			// remove oldest element from cache
 			let key = gaurd.last_acess.pop_first().map(|(_i, key)| key);
