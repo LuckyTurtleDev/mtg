@@ -5,8 +5,9 @@ use iced::{widget::image::Handle, Command};
 use log::{error, info};
 use parking_lot::Mutex;
 use reqwest::Url;
+use rustc_hash::FxHashMap;
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::BTreeMap,
 	mem::{self, replace},
 	ops::{Deref, DerefMut},
 	sync::Arc
@@ -40,7 +41,7 @@ pub struct Cacher {
 /// So the data, will be copy. Since [`Handle`] use [`Arc`] intern this should be cheap.
 pub struct InnerCache {
 	/// maps the key to (last_acess_time, value)
-	data: HashMap<Arc<Url>, (u64, CacheState)>,
+	data: FxHashMap<Arc<Url>, (u64, CacheState)>,
 	/// maps the last acess time to the key used in the HashMap
 	last_acess: BTreeMap<u64, Arc<Url>>,
 	time: u64

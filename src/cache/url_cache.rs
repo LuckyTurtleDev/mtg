@@ -4,7 +4,8 @@ use iced::Command;
 use log::info;
 use once_cell::sync::Lazy;
 use reqwest::Url;
-use std::{collections::HashMap, path::PathBuf};
+use rustc_hash::FxHashMap;
+use std::path::PathBuf;
 use tokio::{fs, sync::mpsc::UnboundedSender as Sender};
 
 pub const URL_CACHE: Lazy<PathBuf> = Lazy::new(|| DIRS.cache_dir().join("img"));
@@ -18,7 +19,7 @@ enum CacheState {
 #[derive(Debug)]
 ///Chache content from a Url to a file
 pub struct UrlCacher {
-	data: HashMap<Url, CacheState>,
+	data: FxHashMap<Url, CacheState>,
 	sender: Sender<Message>
 }
 

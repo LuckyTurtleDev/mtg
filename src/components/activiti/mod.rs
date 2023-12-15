@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use iced::widget::{column, image, scrollable, Image};
+use iced::widget::{column, scrollable, Image};
 
 use crate::{App, Element, CARD_BACK};
 
@@ -11,10 +11,8 @@ pub fn view(app: &App) -> Element {
 		.map(|card| {
 			let url = card.image_uris.get("normal");
 			let handle = url
-				.map(|url| app.img_cache.get(url, &app.url_cache))
-				.flatten()
-				.map(|f| app.img_limiter.limit(f))
-				.flatten()
+				.and_then(|url| app.img_cache.get(url, &app.url_cache))
+				.and_then(|f| app.img_limiter.limit(f))
 				.unwrap_or(CARD_BACK.deref().clone());
 			Image::new(handle).into()
 		})

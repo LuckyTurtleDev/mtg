@@ -42,7 +42,7 @@ const DIRS: Lazy<ProjectDirs> = Lazy::new(|| {
 const CLIENT: Lazy<Client> = Lazy::new(|| reqwest::Client::new());
 
 const CARD_BACK: Lazy<Handle> =
-	Lazy::new(|| Handle::from_memory(include_bytes!("img/card_back.webp")));
+	Lazy::new(|| Handle::from_memory(include_bytes!("img/card_back.jpg")));
 
 static RECEIVER: Lazy<Mutex<Option<Receiver<Message>>>> = Lazy::new(|| Mutex::new(None));
 
